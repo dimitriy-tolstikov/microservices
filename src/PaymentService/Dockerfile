@@ -1,5 +1,6 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
+COPY ["Directory.Build.props", "global.json", "./"]
 COPY ["src/Shared/Shared.csproj", "src/Shared/"]
 COPY ["src/PaymentService/PaymentService.csproj", "src/PaymentService/"]
 RUN dotnet restore "src/PaymentService/PaymentService.csproj"

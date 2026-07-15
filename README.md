@@ -5,7 +5,7 @@
 [![.NET CI](https://github.com/DmitriyOT/Microservices-Example/actions/workflows/dotnet.yml/badge.svg)](https://github.com/DmitriyOT/Microservices-Example/actions/workflows/dotnet.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Демонстрация взаимодействия микросервисов через два брокера сообщений:
+Демонстрация взаимодействия микросервисов через два брокера сообщений с упором на надёжность, наблюдаемость и тестируемость:
 
 - **Apache Kafka** — поток событий о заказах.
 - **RabbitMQ** — обработка платежей, доставки и уведомлений.
@@ -15,12 +15,12 @@
 ```text
 ┌──────────────┐     Kafka: orders      ┌─────────────────┐
 │ OrderService │ ──────────────────────> │ PaymentService  │
-│   (Web API)  │                         │ Kafka consumer  │
+│   (Web API)  │    + outbox pattern    │ Kafka consumer  │
 └──────────────┘                         │ RabbitMQ publisher
                                          └────────┬────────┘
                                                   │
                        ┌──────────────────────────┼──────────────────────────┐
-                       │ RabbitMQ: payments (fanout)                          │
+                       │ RabbitMQ: payments (direct) + DLX                  │
                        ▼                          ▼                          ▼
             ┌───────────────────┐    ┌───────────────────┐    ┌─────────────────────────┐
             │ payment.processed │    │ shipping.requested│    │ notification.requested  │
@@ -39,20 +39,35 @@
 
 | Сервис | Тип | Роль | Брокер |
 |---|---|---|---|
-| `OrderService` | ASP.NET Core Web API | Принимает HTTP-запросы на создание заказа | Kafka producer |
+| `OrderService` | ASP.NET Core Web API | Принимает HTTP-запросы, сохраняет заказ в SQLite и событие в Outbox | Kafka producer |
 | `PaymentService` | Worker Service | Слушает Kafka, имитирует оплату | Kafka consumer + RabbitMQ producer |
 | `ShippingService` | Worker Service | Слушает очередь доставки | RabbitMQ consumer |
 | `NotificationService` | Worker Service | Слушает очередь уведомлений | RabbitMQ consumer |
+
+## Что реализовано
+
+- **Outbox pattern** в `OrderService` — заказ и событие сохраняются в одной транзакции SQLite, а фоновый паблишер отправляет событие в Kafka.
+- **Идемпотентность** в `PaymentService` — повторно обработанные заказы пропускаются.
+- **Ручной commit offset** в Kafka — сообщение коммитится только после успешной обработки.
+- **Dead Letter Exchange (DLX)** в RabbitMQ — ошибочные сообщения не теряются, а отправляются в очереди `*.dlq`.
+- **Async consumers** RabbitMQ — обработка сообщений не блокирует пул потоков.
+- **Correlation ID** — пробрасывается из HTTP-запроса через Kafka и RabbitMQ между всеми сервисами.
+- **OpenTelemetry tracing** — консольный экспортёр трейсов для всех сервисов.
+- **Health checks** — `/health` в `OrderService`.
+- **Глобальный обработчик исключений** — `ProblemDetails` для непредвиденных ошибок.
+- **Типизированная конфигурация** с валидацией на старте.
+- **Юнит- и интеграционные тесты** на xUnit.
 
 ## Технологии
 
 - [.NET 8](https://dotnet.microsoft.com/download)
 - [ASP.NET Core](https://learn.microsoft.com/aspnet/core/)
+- [Entity Framework Core SQLite](https://learn.microsoft.com/ef/core/)
 - [Apache Kafka](https://kafka.apache.org/)
 - [RabbitMQ](https://www.rabbitmq.com/)
 - [Docker](https://www.docker.com/) & Docker Compose
-- [Confluent.Kafka](https://docs.confluent.io/kafka-clients/dotnet/current/overview.html)
-- [RabbitMQ.Client](https://www.rabbitmq.com/dotnet-api-guide.html)
+- [OpenTelemetry](https://opentelemetry.io/)
+- [xUnit](https://xunit.net/)
 
 ## Требования
 
@@ -69,7 +84,7 @@ docker compose up -d zookeeper kafka rabbitmq
 
 Подождите ~15–20 секунд, пока Kafka и RabbitMQ полностью запустятся.
 
-> **Примечание:** В проекте используется команда `docker compose` (Compose V2). Если у вас установлена старая версия `docker-compose`, замените команду соответствующим образом.
+> **Примечание:** В проекте используется команда `docker compose` (Compose V2).
 
 ### 2. Запуск сервисов (локально)
 
@@ -94,6 +109,7 @@ dotnet run --project src/NotificationService/NotificationService.csproj
 ```bash
 curl -X POST http://localhost:5000/api/orders \
   -H "Content-Type: application/json" \
+  -H "X-Correlation-ID: demo-123" \
   -d '{
     "customerEmail": "user@example.com",
     "product": "Ноутбук",
@@ -128,18 +144,37 @@ API будет доступен на `http://localhost:5000`.
 ```text
 .
 ├── .github/
+│   ├── dependabot.yml
 │   └── workflows/
-│       └── dotnet.yml          # CI: сборка решения
+│       └── dotnet.yml          # CI: сборка, тесты, Docker
 ├── docker-compose.yml          # Инфраструктура и сервисы
-├── Microservices.slnx          # Файл решения .NET
+├── Microservices.sln           # Файл решения .NET
+├── Directory.Build.props       # Общие MSBuild-свойства
+├── global.json                 # Pin .NET SDK
+├── .editorconfig               # Настройки стиля кода
 ├── LICENSE                     # MIT License
 ├── README.md                   # Этот файл
-└── src/
-    ├── Shared                  # Общие события и сообщения
-    ├── OrderService            # Web API
-    ├── PaymentService          # Worker
-    ├── ShippingService         # Worker
-    └── NotificationService     # Worker
+├── src/
+│   ├── Shared                  # Общие события, сообщения, мessaging, options
+│   ├── OrderService            # Web API + Outbox
+│   ├── PaymentService          # Worker
+│   ├── ShippingService         # Worker
+│   └── NotificationService     # Worker
+└── tests/
+    ├── OrderService.UnitTests
+    ├── Shared.UnitTests
+    └── Microservices.IntegrationTests
+```
+
+## Тесты
+
+```bash
+# Все тесты
+dotnet test Microservices.sln
+
+# Сборка и тесты в Release
+dotnet build Microservices.sln --configuration Release
+dotnet test Microservices.sln --configuration Release --no-build
 ```
 
 ## CI / CD
@@ -149,18 +184,22 @@ API будет доступен на `http://localhost:5000`.
 1. `dotnet restore`
 2. `dotnet build`
 3. `dotnet test`
+4. `docker compose build`
 
 ## Полезные команды
 
 ```bash
 # Пересобрать решение
-dotnet build Microservices.slnx
+dotnet build Microservices.sln
 
 # Остановить всю инфраструктуру
 docker compose down
 
 # Посмотреть логи сервиса
 docker compose logs -f payment-service
+
+# Просмотр "мертвых" сообщений в RabbitMQ
+# Очереди вида *.dlq доступны в management UI: http://localhost:15672
 ```
 
 ## Лицензия

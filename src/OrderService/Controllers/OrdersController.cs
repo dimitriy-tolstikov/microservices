@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using OrderService.Data;
 using OrderService.Models;
-using OrderService.Services;
 using Shared.Messages;
 
 namespace OrderService.Controllers;
@@ -9,46 +10,69 @@ namespace OrderService.Controllers;
 [Route("api/[controller]")]
 public class OrdersController : ControllerBase
 {
-    private readonly IOrderPublisher _publisher;
+    private readonly OrderDbContext _dbContext;
     private readonly ILogger<OrdersController> _logger;
 
-    public OrdersController(IOrderPublisher publisher, ILogger<OrdersController> logger)
+    public OrdersController(OrderDbContext dbContext, ILogger<OrdersController> logger)
     {
-        _publisher = publisher;
+        _dbContext = dbContext;
         _logger = logger;
     }
 
     [HttpPost]
-    public async Task<ActionResult<OrderCreated>> Create([FromBody] CreateOrderRequest request)
+    public async Task<ActionResult<OrderCreated>> Create([FromBody] CreateOrderRequest request, CancellationToken cancellationToken)
     {
-        if (!ModelState.IsValid)
+        var order = new Order
         {
-            return BadRequest(ModelState);
-        }
-
-        var order = new OrderCreated
-        {
-            OrderId = Guid.NewGuid(),
+            Id = Guid.NewGuid(),
             CustomerEmail = request.CustomerEmail,
             Product = request.Product,
             Quantity = request.Quantity,
-            Amount = request.Amount
+            Amount = request.Amount,
+            Status = "Processing"
         };
 
-        await _publisher.PublishAsync(order);
+        var orderCreatedEvent = new OrderCreated
+        {
+            OrderId = order.Id,
+            CustomerEmail = order.CustomerEmail,
+            Product = order.Product,
+            Quantity = order.Quantity,
+            Amount = order.Amount
+        };
 
-        _logger.LogInformation("Order {OrderId} accepted for {CustomerEmail}", order.OrderId, order.CustomerEmail);
+        var outboxMessage = new OutboxMessage
+        {
+            Id = Guid.NewGuid(),
+            Type = typeof(OrderCreated).FullName!,
+            Payload = System.Text.Json.JsonSerializer.Serialize(orderCreatedEvent)
+        };
+
+        _dbContext.Orders.Add(order);
+        _dbContext.OutboxMessages.Add(outboxMessage);
+        await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation("Order {OrderId} accepted for {CustomerEmail}", order.Id, order.CustomerEmail);
 
         return AcceptedAtAction(
             nameof(GetById),
-            new { id = order.OrderId },
-            order);
+            new { id = order.Id },
+            orderCreatedEvent);
     }
 
     [HttpGet("{id:guid}")]
-    public ActionResult<OrderCreated> GetById(Guid id)
+    public async Task<ActionResult<Order>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        // В учебном примере просто возвращаем заглушку.
-        return Ok(new { OrderId = id, Status = "Processing" });
+        var order = await _dbContext.Orders
+            .AsNoTracking()
+            .FirstOrDefaultAsync(o => o.Id == id, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (order == null)
+        {
+            return NotFound();
+        }
+
+        return Ok(order);
     }
 }

@@ -1,97 +1,37 @@
-using System.Text;
-using System.Text.Json;
-using RabbitMQ.Client;
-using RabbitMQ.Client.Events;
+using Microsoft.Extensions.Options;
 using Shared.Events;
+using Shared.Messaging;
 using Shared.Messages;
+using Shared.Options;
 
 namespace NotificationService.Workers;
 
-public class NotificationWorker : BackgroundService
+public class NotificationWorker : RabbitMqConsumerBase<NotificationRequested>
 {
-    private readonly IConfiguration _configuration;
-    private readonly ILogger<NotificationWorker> _logger;
-
-    public NotificationWorker(IConfiguration configuration, ILogger<NotificationWorker> logger)
+    public NotificationWorker(
+        IOptions<RabbitMqOptions> options,
+        IMessageSerializer serializer,
+        ILogger<NotificationWorker> logger)
+        : base(options, serializer, logger)
     {
-        _configuration = configuration;
-        _logger = logger;
     }
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override string QueueName => EventTypes.NotificationQueue;
+
+    protected override Task HandleMessageAsync(NotificationRequested notification, CancellationToken cancellationToken)
     {
-        return Task.Run(() => StartConsumer(stoppingToken), stoppingToken);
-    }
+        Logger.LogInformation(
+            "Sending email to {Email}: {Subject}",
+            notification.CustomerEmail,
+            notification.Subject);
 
-    private void StartConsumer(CancellationToken stoppingToken)
-    {
-        var factory = new ConnectionFactory
-        {
-            HostName = _configuration["RabbitMQ:HostName"] ?? "localhost",
-            UserName = _configuration["RabbitMQ:UserName"] ?? "guest",
-            Password = _configuration["RabbitMQ:Password"] ?? "guest",
-            DispatchConsumersAsync = false
-        };
+        // Имитация отправки email
+        Thread.Sleep(300);
 
-        using var connection = factory.CreateConnection();
-        using var channel = connection.CreateModel();
+        Logger.LogInformation(
+            "Email sent for order {OrderId}",
+            notification.OrderId);
 
-        channel.ExchangeDeclare(EventTypes.PaymentExchange, ExchangeType.Direct, durable: true);
-        channel.QueueDeclare(EventTypes.NotificationQueue, durable: true, exclusive: false, autoDelete: false);
-        channel.QueueBind(EventTypes.NotificationQueue, EventTypes.PaymentExchange, EventTypes.NotificationQueue);
-
-        var consumer = new EventingBasicConsumer(channel);
-        consumer.Received += (model, ea) =>
-        {
-            try
-            {
-                var body = ea.Body.ToArray();
-                var json = Encoding.UTF8.GetString(body);
-                var notification = JsonSerializer.Deserialize<NotificationRequested>(json);
-
-                if (notification == null)
-                {
-                    _logger.LogWarning("Received null notification message");
-                    channel.BasicAck(ea.DeliveryTag, multiple: false);
-                    return;
-                }
-
-                _logger.LogInformation(
-                    "Sending email to {Email}: {Subject}",
-                    notification.CustomerEmail,
-                    notification.Subject);
-
-                // Имитация отправки email
-                Thread.Sleep(300);
-
-                _logger.LogInformation(
-                    "Email sent for order {OrderId}",
-                    notification.OrderId);
-
-                channel.BasicAck(ea.DeliveryTag, multiple: false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing notification message");
-                channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
-            }
-        };
-
-        channel.BasicConsume(EventTypes.NotificationQueue, autoAck: false, consumer);
-
-        _logger.LogInformation("Notification worker started. Listening queue {Queue}", EventTypes.NotificationQueue);
-
-        try
-        {
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                Thread.Sleep(1000);
-            }
-        }
-        finally
-        {
-            channel.Close();
-            connection.Close();
-        }
+        return Task.CompletedTask;
     }
 }

@@ -1,6 +1,6 @@
 using Shared.Messages;
 
-namespace PaymentService.Services;
+namespace Shared.Messaging;
 
 public interface IRabbitMqPublisher : IDisposable
 {

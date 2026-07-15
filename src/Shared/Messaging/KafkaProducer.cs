@@ -1,26 +1,31 @@
+using System.Text;
 using System.Text.Json;
 using Confluent.Kafka;
-using Shared.Events;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Shared.Messages;
+using Shared.Observability;
+using Shared.Options;
 
-namespace OrderService.Services;
+namespace Shared.Messaging;
 
-public class OrderPublisher : IOrderPublisher, IDisposable
+public sealed class KafkaProducer : IKafkaProducer
 {
     private readonly IProducer<string, string> _producer;
-    private readonly ILogger<OrderPublisher> _logger;
+    private readonly ILogger<KafkaProducer> _logger;
+    private readonly KafkaOptions _options;
 
-    public OrderPublisher(IConfiguration configuration, ILogger<OrderPublisher> logger)
+    public KafkaProducer(IOptions<KafkaOptions> options, ILogger<KafkaProducer> logger)
     {
         _logger = logger;
+        _options = options.Value;
 
-        var bootstrapServers = configuration["Kafka:BootstrapServers"] ?? "localhost:9092";
         var config = new ProducerConfig
         {
-            BootstrapServers = bootstrapServers,
+            BootstrapServers = _options.BootstrapServers,
             Acks = Acks.All,
-            MessageSendMaxRetries = 3,
-            RetryBackoffMs = 1000
+            MessageSendMaxRetries = _options.MessageSendMaxRetries,
+            RetryBackoffMs = _options.RetryBackoffMs
         };
 
         _producer = new ProducerBuilder<string, string>(config).Build();
@@ -32,10 +37,14 @@ public class OrderPublisher : IOrderPublisher, IDisposable
         var message = new Message<string, string>
         {
             Key = order.OrderId.ToString(),
-            Value = json
+            Value = json,
+            Headers = new Headers
+            {
+                new Header(CorrelationIdHeader.Name, Encoding.UTF8.GetBytes(CorrelationContext.GetOrCreate()))
+            }
         };
 
-        var deliveryResult = await _producer.ProduceAsync(EventTypes.OrdersTopic, message, cancellationToken);
+        var deliveryResult = await _producer.ProduceAsync(_options.Topic, message, cancellationToken);
 
         _logger.LogInformation(
             "Order {OrderId} published to Kafka topic {Topic} partition {Partition} offset {Offset}",

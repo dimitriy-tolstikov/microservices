@@ -1,97 +1,37 @@
-using System.Text;
-using System.Text.Json;
-using RabbitMQ.Client;
-using RabbitMQ.Client.Events;
+using Microsoft.Extensions.Options;
 using Shared.Events;
+using Shared.Messaging;
 using Shared.Messages;
+using Shared.Options;
 
 namespace ShippingService.Workers;
 
-public class ShippingWorker : BackgroundService
+public class ShippingWorker : RabbitMqConsumerBase<ShippingRequested>
 {
-    private readonly IConfiguration _configuration;
-    private readonly ILogger<ShippingWorker> _logger;
-
-    public ShippingWorker(IConfiguration configuration, ILogger<ShippingWorker> logger)
+    public ShippingWorker(
+        IOptions<RabbitMqOptions> options,
+        IMessageSerializer serializer,
+        ILogger<ShippingWorker> logger)
+        : base(options, serializer, logger)
     {
-        _configuration = configuration;
-        _logger = logger;
     }
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override string QueueName => EventTypes.ShippingQueue;
+
+    protected override Task HandleMessageAsync(ShippingRequested shipping, CancellationToken cancellationToken)
     {
-        return Task.Run(() => StartConsumer(stoppingToken), stoppingToken);
-    }
+        Logger.LogInformation(
+            "Preparing shipment for order {OrderId}. Tracking: {TrackingNumber}",
+            shipping.OrderId,
+            shipping.TrackingNumber);
 
-    private void StartConsumer(CancellationToken stoppingToken)
-    {
-        var factory = new ConnectionFactory
-        {
-            HostName = _configuration["RabbitMQ:HostName"] ?? "localhost",
-            UserName = _configuration["RabbitMQ:UserName"] ?? "guest",
-            Password = _configuration["RabbitMQ:Password"] ?? "guest",
-            DispatchConsumersAsync = false
-        };
+        // Имитация работы службы доставки
+        Thread.Sleep(500);
 
-        using var connection = factory.CreateConnection();
-        using var channel = connection.CreateModel();
+        Logger.LogInformation(
+            "Shipment for order {OrderId} dispatched successfully",
+            shipping.OrderId);
 
-        channel.ExchangeDeclare(EventTypes.PaymentExchange, ExchangeType.Direct, durable: true);
-        channel.QueueDeclare(EventTypes.ShippingQueue, durable: true, exclusive: false, autoDelete: false);
-        channel.QueueBind(EventTypes.ShippingQueue, EventTypes.PaymentExchange, EventTypes.ShippingQueue);
-
-        var consumer = new EventingBasicConsumer(channel);
-        consumer.Received += (model, ea) =>
-        {
-            try
-            {
-                var body = ea.Body.ToArray();
-                var json = Encoding.UTF8.GetString(body);
-                var shipping = JsonSerializer.Deserialize<ShippingRequested>(json);
-
-                if (shipping == null)
-                {
-                    _logger.LogWarning("Received null shipping message");
-                    channel.BasicAck(ea.DeliveryTag, multiple: false);
-                    return;
-                }
-
-                _logger.LogInformation(
-                    "Preparing shipment for order {OrderId}. Tracking: {TrackingNumber}",
-                    shipping.OrderId,
-                    shipping.TrackingNumber);
-
-                // Имитация работы службы доставки
-                Thread.Sleep(500);
-
-                _logger.LogInformation(
-                    "Shipment for order {OrderId} dispatched successfully",
-                    shipping.OrderId);
-
-                channel.BasicAck(ea.DeliveryTag, multiple: false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing shipping message");
-                channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
-            }
-        };
-
-        channel.BasicConsume(EventTypes.ShippingQueue, autoAck: false, consumer);
-
-        _logger.LogInformation("Shipping worker started. Listening queue {Queue}", EventTypes.ShippingQueue);
-
-        try
-        {
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                Thread.Sleep(1000);
-            }
-        }
-        finally
-        {
-            channel.Close();
-            connection.Close();
-        }
+        return Task.CompletedTask;
     }
 }

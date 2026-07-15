@@ -2,6 +2,7 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     container_name: zookeeper
+    restart: unless-stopped
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -11,6 +12,7 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: kafka
+    restart: unless-stopped
     depends_on:
       zookeeper:
         condition: service_started
@@ -33,6 +35,7 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management
     container_name: rabbitmq
+    restart: unless-stopped
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -51,6 +54,7 @@ services:
       context: .
       dockerfile: src/OrderService/Dockerfile
     container_name: order-service
+    restart: unless-stopped
     ports:
       - "5000:8080"
     depends_on:
@@ -58,13 +62,16 @@ services:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
       Kafka__BootstrapServers: kafka:29092
+      ConnectionStrings__OrdersDatabase: "Data Source=/app/orders.db"
 
   payment-service:
     build:
       context: .
       dockerfile: src/PaymentService/Dockerfile
     container_name: payment-service
+    restart: unless-stopped
     depends_on:
       kafka:
         condition: service_healthy
@@ -74,27 +81,35 @@ services:
       DOTNET_ENVIRONMENT: Development
       Kafka__BootstrapServers: kafka:29092
       RabbitMQ__HostName: rabbitmq
+      RabbitMQ__UserName: guest
+      RabbitMQ__Password: guest
 
   shipping-service:
     build:
       context: .
       dockerfile: src/ShippingService/Dockerfile
     container_name: shipping-service
+    restart: unless-stopped
     depends_on:
       rabbitmq:
         condition: service_healthy
     environment:
       DOTNET_ENVIRONMENT: Development
       RabbitMQ__HostName: rabbitmq
+      RabbitMQ__UserName: guest
+      RabbitMQ__Password: guest
 
   notification-service:
     build:
       context: .
       dockerfile: src/NotificationService/Dockerfile
     container_name: notification-service
+    restart: unless-stopped
     depends_on:
       rabbitmq:
         condition: service_healthy
     environment:
       DOTNET_ENVIRONMENT: Development
       RabbitMQ__HostName: rabbitmq
+      RabbitMQ__UserName: guest
+      RabbitMQ__Password: guest

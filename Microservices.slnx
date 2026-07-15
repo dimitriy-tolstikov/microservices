@@ -1,9 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/NotificationService/NotificationService.csproj" />
-    <Project Path="src/OrderService/OrderService.csproj" />
-    <Project Path="src/PaymentService/PaymentService.csproj" />
-    <Project Path="src/Shared/Shared.csproj" />
-    <Project Path="src/ShippingService/ShippingService.csproj" />
-  </Folder>
-</Solution>

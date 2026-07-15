@@ -1,0 +1,13 @@
+**/.git
+**/.github
+**/.vs
+**/.vscode
+**/.idea
+**/bin
+**/obj
+**/out
+**/.docker
+**/*.md
+**/*.user
+**/Dockerfile*
+**/.env

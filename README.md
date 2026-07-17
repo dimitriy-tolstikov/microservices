@@ -1,16 +1,18 @@
-# Микросервисы на ASP.NET Core + Apache Kafka + RabbitMQ
+# Microservices with ASP.NET Core + Apache Kafka + RabbitMQ
 
-> Учебный тестовый проект распределённой системы на .NET 8.
+[Русская версия](README.ru.md)
+
+> A learning test project of a distributed system on .NET 8.
 
 [![.NET CI](https://github.com/dimitriy-tolstikov/Microservices-Example/actions/workflows/dotnet.yml/badge.svg)](https://github.com/dimitriy-tolstikov/Microservices-Example/actions/workflows/dotnet.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Демонстрация взаимодействия микросервисов через два брокера сообщений с упором на надёжность, наблюдаемость и тестируемость:
+A demonstration of microservice interaction through two message brokers with a focus on reliability, observability, and testability:
 
-- **Apache Kafka** — поток событий о заказах.
-- **RabbitMQ** — обработка платежей, доставки и уведомлений.
+- **Apache Kafka** — order events stream.
+- **RabbitMQ** — payment, shipping, and notification processing.
 
-## Архитектура
+## Architecture
 
 ```text
 ┌──────────────┐     Kafka: orders      ┌─────────────────┐
@@ -35,30 +37,30 @@
                                    └─────────────────┘                   └─────────────────┘
 ```
 
-## Сервисы
+## Services
 
-| Сервис | Тип | Роль | Брокер |
+| Service | Type | Role | Broker |
 |---|---|---|---|
-| `OrderService` | ASP.NET Core Web API | Принимает HTTP-запросы, сохраняет заказ в SQLite и событие в Outbox | Kafka producer |
-| `PaymentService` | Worker Service | Слушает Kafka, имитирует оплату | Kafka consumer + RabbitMQ producer |
-| `ShippingService` | Worker Service | Слушает очередь доставки | RabbitMQ consumer |
-| `NotificationService` | Worker Service | Слушает очередь уведомлений | RabbitMQ consumer |
+| `OrderService` | ASP.NET Core Web API | Accepts HTTP requests, saves the order to SQLite and the event to the Outbox | Kafka producer |
+| `PaymentService` | Worker Service | Listens to Kafka, simulates payment | Kafka consumer + RabbitMQ producer |
+| `ShippingService` | Worker Service | Listens to the shipping queue | RabbitMQ consumer |
+| `NotificationService` | Worker Service | Listens to the notification queue | RabbitMQ consumer |
 
-## Что реализовано
+## What's implemented
 
-- **Outbox pattern** в `OrderService` — заказ и событие сохраняются в одной транзакции SQLite, а фоновый паблишер отправляет событие в Kafka.
-- **Идемпотентность** в `PaymentService` — повторно обработанные заказы пропускаются.
-- **Ручной commit offset** в Kafka — сообщение коммитится только после успешной обработки.
-- **Dead Letter Exchange (DLX)** в RabbitMQ — ошибочные сообщения не теряются, а отправляются в очереди `*.dlq`.
-- **Async consumers** RabbitMQ — обработка сообщений не блокирует пул потоков.
-- **Correlation ID** — пробрасывается из HTTP-запроса через Kafka и RabbitMQ между всеми сервисами.
-- **OpenTelemetry tracing** — консольный экспортёр трейсов для всех сервисов.
-- **Health checks** — `/health` в `OrderService`.
-- **Глобальный обработчик исключений** — `ProblemDetails` для непредвиденных ошибок.
-- **Типизированная конфигурация** с валидацией на старте.
-- **Юнит- и интеграционные тесты** на xUnit.
+- **Outbox pattern** in `OrderService` — the order and the event are saved in a single SQLite transaction, and a background publisher sends the event to Kafka.
+- **Idempotency** in `PaymentService` — re-processed orders are skipped.
+- **Manual offset commit** in Kafka — a message is committed only after successful processing.
+- **Dead Letter Exchange (DLX)** in RabbitMQ — failed messages are not lost but routed to `*.dlq` queues.
+- **Async consumers** in RabbitMQ — message processing does not block the thread pool.
+- **Correlation ID** — propagated from the HTTP request through Kafka and RabbitMQ across all services.
+- **OpenTelemetry tracing** — console trace exporter for all services.
+- **Health checks** — `/health` in `OrderService`.
+- **Global exception handler** — `ProblemDetails` for unexpected errors.
+- **Strongly-typed configuration** with validation at startup.
+- **Unit and integration tests** with xUnit.
 
-## Технологии
+## Technologies
 
 - [.NET 8](https://dotnet.microsoft.com/download)
 - [ASP.NET Core](https://learn.microsoft.com/aspnet/core/)
@@ -69,42 +71,42 @@
 - [OpenTelemetry](https://opentelemetry.io/)
 - [xUnit](https://xunit.net/)
 
-## Требования
+## Requirements
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) с включённым Docker Compose
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) with Docker Compose enabled
 
-## Быстрый старт
+## Quick start
 
-### 1. Инфраструктура
+### 1. Infrastructure
 
 ```bash
 docker compose up -d zookeeper kafka rabbitmq
 ```
 
-Подождите ~15–20 секунд, пока Kafka и RabbitMQ полностью запустятся.
+Wait ~15–20 seconds for Kafka and RabbitMQ to fully start.
 
-> **Примечание:** В проекте используется команда `docker compose` (Compose V2).
+> **Note:** The project uses the `docker compose` command (Compose V2).
 
-### 2. Запуск сервисов (локально)
+### 2. Run the services (locally)
 
-Откройте 4 терминала и выполните в каждом:
+Open 4 terminals and run in each:
 
 ```bash
-# Терминал 1 — API
+# Terminal 1 — API
 dotnet run --project src/OrderService/OrderService.csproj
 
-# Терминал 2 — обработка платежей
+# Terminal 2 — payment processing
 dotnet run --project src/PaymentService/PaymentService.csproj
 
-# Терминал 3 — доставка
+# Terminal 3 — shipping
 dotnet run --project src/ShippingService/ShippingService.csproj
 
-# Терминал 4 — уведомления
+# Terminal 4 — notifications
 dotnet run --project src/NotificationService/NotificationService.csproj
 ```
 
-### 3. Создать заказ
+### 3. Create an order
 
 ```bash
 curl -X POST http://localhost:5000/api/orders \
@@ -118,28 +120,28 @@ curl -X POST http://localhost:5000/api/orders \
   }'
 ```
 
-При сумме `> 10000` платёж будет отклонён для демонстрации обработки ошибок.
+With an amount `> 10000` the payment will be declined to demonstrate error handling.
 
-## Запуск полностью в Docker
+## Run everything in Docker
 
 ```bash
 docker compose up -d --build
 ```
 
-API будет доступен на `http://localhost:5000`.
+The API will be available at `http://localhost:5000`.
 
-Управление RabbitMQ: `http://localhost:15672` (guest / guest).
+RabbitMQ management UI: `http://localhost:15672` (guest / guest).
 
-## Проверка работы
+## Verifying it works
 
-После создания заказа в логах сервисов должны появиться сообщения:
+After creating an order, the following messages should appear in the service logs:
 
 - `OrderService`: `Order {Guid} accepted ...`
 - `PaymentService`: `Processing payment for order {Guid}`
 - `ShippingService`: `Preparing shipment for order {Guid}. Tracking: TRK-...`
 - `NotificationService`: `Sending email to user@example.com: Оплата прошла успешно`
 
-## Структура проекта
+## Project structure
 
 ```text
 .
@@ -166,42 +168,42 @@ API будет доступен на `http://localhost:5000`.
     └── Microservices.IntegrationTests
 ```
 
-## Тесты
+## Tests
 
 ```bash
-# Все тесты
+# All tests
 dotnet test Microservices.sln
 
-# Сборка и тесты в Release
+# Build and test in Release
 dotnet build Microservices.sln --configuration Release
 dotnet test Microservices.sln --configuration Release --no-build
 ```
 
 ## CI / CD
 
-При публикации на GitHub workflow `.github/workflows/dotnet.yml` автоматически выполняет:
+When published to GitHub, the `.github/workflows/dotnet.yml` workflow automatically runs:
 
 1. `dotnet restore`
 2. `dotnet build`
 3. `dotnet test`
 4. `docker compose build`
 
-## Полезные команды
+## Useful commands
 
 ```bash
-# Пересобрать решение
+# Rebuild the solution
 dotnet build Microservices.sln
 
-# Остановить всю инфраструктуру
+# Stop all infrastructure
 docker compose down
 
-# Посмотреть логи сервиса
+# View service logs
 docker compose logs -f payment-service
 
-# Просмотр "мертвых" сообщений в RabbitMQ
-# Очереди вида *.dlq доступны в management UI: http://localhost:15672
+# Viewing "dead" messages in RabbitMQ
+# Queues like *.dlq are available in the management UI: http://localhost:15672
 ```
 
-## Лицензия
+## License
 
-Распространяется под лицензией MIT. См. [LICENSE](LICENSE).
+Distributed under the MIT License. See [LICENSE](LICENSE).

@@ -4,7 +4,7 @@
 
 > A learning test project of a distributed system on .NET 8.
 
-[![.NET CI](https://github.com/DmitriyOT/Microservices-Example/actions/workflows/dotnet.yml/badge.svg)](https://github.com/DmitriyOT/Microservices-Example/actions/workflows/dotnet.yml)
+[![.NET CI](https://github.com/tolstikov-dev/Microservices-Example/actions/workflows/dotnet.yml/badge.svg)](https://github.com/tolstikov-dev/Microservices-Example/actions/workflows/dotnet.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A demonstration of microservice interaction through two message brokers with a focus on reliability, observability, and testability:

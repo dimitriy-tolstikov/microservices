@@ -4,7 +4,7 @@
 
 > Учебный тестовый проект распределённой системы на .NET 8.
 
-[![.NET CI](https://github.com/dimitriy-tolstikov/Microservices-Example/actions/workflows/dotnet.yml/badge.svg)](https://github.com/dimitriy-tolstikov/Microservices-Example/actions/workflows/dotnet.yml)
+[![.NET CI](https://github.com/dimitriy-tolstikov/microservices/actions/workflows/dotnet.yml/badge.svg)](https://github.com/dimitriy-tolstikov/microservices/actions/workflows/dotnet.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Демонстрация взаимодействия микросервисов через два брокера сообщений с упором на надёжность, наблюдаемость и тестируемость:
